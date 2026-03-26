@@ -164,3 +164,15 @@ export async function generateBatchMessages(params: {
 
   return results;
 }
+
+export async function tweakMessage(currentMessage: string, instruction: string): Promise<string> {
+  return claudePrompt(`You are editing a networking message. Apply the user's instruction to refine it.
+
+CURRENT MESSAGE:
+${currentMessage}
+
+INSTRUCTION:
+${instruction}
+
+Write ONLY the updated message text. No explanation, no quotes, no markdown. Just the message.`);
+}

@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 export default async function MessagesPage() {
   const messages = await prisma.outreachMessage.findMany({
     orderBy: { createdAt: 'desc' },
-    include: { contact: { select: { id: true, name: true, platform: true } } },
+    include: { contact: { select: { id: true, name: true, platform: true, email: true, phone: true, linkedinUrl: true } } },
   });
 
   return (

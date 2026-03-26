@@ -68,7 +68,27 @@ export async function POST(req: NextRequest) {
 
     contactsCreated++;
 
+    const latestExisting = await prisma.chatMessage.findFirst({
+      where: { contactId: contact.id },
+      orderBy: { timestamp: 'desc' },
+      select: { timestamp: true },
+    });
+
+    const existingHashes = new Set<string>();
+    if (latestExisting) {
+      const existing = await prisma.chatMessage.findMany({
+        where: { contactId: contact.id },
+        select: { sender: true, content: true, timestamp: true },
+      });
+      for (const e of existing) {
+        existingHashes.add(`${e.sender}|${e.timestamp.getTime()}|${e.content}`);
+      }
+    }
+
     for (const msg of chat.messages) {
+      const hash = `${msg.sender}|${msg.timestamp.getTime()}|${msg.content}`;
+      if (existingHashes.has(hash)) continue;
+
       await prisma.chatMessage.create({
         data: {
           contactId: contact.id,

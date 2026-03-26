@@ -15,6 +15,9 @@ model Contact {
   headline    String?  // job title or LinkedIn headline
   company     String?
   location    String?
+  email       String?
+  phone       String?
+  linkedinUrl String?
   background  String?  // user-provided background notes
   profileJson String?  // AI-generated profile analysis (JSON)
   tags        String?  // comma-separated tags

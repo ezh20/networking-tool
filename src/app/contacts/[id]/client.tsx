@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { getSendOptions } from '@/lib/send';
 
 interface Contact {
   id: string;
@@ -11,6 +12,9 @@ interface Contact {
   headline: string | null;
   company: string | null;
   location: string | null;
+  email: string | null;
+  phone: string | null;
+  linkedinUrl: string | null;
   background: string | null;
   profileJson: string | null;
   tags: string | null;
@@ -22,6 +26,9 @@ export function ContactDetail({ contact }: { contact: Contact }) {
   const router = useRouter();
   const [background, setBackground] = useState(contact.background || '');
   const [tags, setTags] = useState(contact.tags || '');
+  const [email, setEmail] = useState(contact.email || '');
+  const [phone, setPhone] = useState(contact.phone || '');
+  const [linkedinUrl, setLinkedinUrl] = useState(contact.linkedinUrl || '');
   const [analyzing, setAnalyzing] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [messageType, setMessageType] = useState<string>('holiday');
@@ -37,7 +44,7 @@ export function ContactDetail({ contact }: { contact: Contact }) {
     await fetch(`/api/contacts/${contact.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ background, tags }),
+      body: JSON.stringify({ background, tags, email, phone, linkedinUrl }),
     });
     setSaving(false);
   };
@@ -87,6 +94,27 @@ export function ContactDetail({ contact }: { contact: Contact }) {
         <div className="space-y-6">
           {/* Background */}
           <section className="bg-surface border border-border rounded-xl p-5">
+            <h3 className="text-sm font-medium mb-3">Contact Info</h3>
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Email"
+                className="px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:border-gray-400"
+              />
+              <input
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="Phone"
+                className="px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:border-gray-400"
+              />
+            </div>
+            <input
+              value={linkedinUrl}
+              onChange={(e) => setLinkedinUrl(e.target.value)}
+              placeholder="LinkedIn URL"
+              className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:border-gray-400 mb-3"
+            />
             <h3 className="text-sm font-medium mb-3">Background Notes</h3>
             <textarea
               value={background}
@@ -185,7 +213,7 @@ export function ContactDetail({ contact }: { contact: Contact }) {
               <h3 className="text-sm font-medium mb-3">Generated Messages</h3>
               <div className="space-y-3">
                 {contact.outreach.map((msg) => (
-                  <OutreachCard key={msg.id} msg={msg} />
+                  <OutreachCard key={msg.id} msg={msg} contact={{ platform: contact.platform, email, phone, linkedinUrl }} />
                 ))}
               </div>
             </section>
@@ -222,8 +250,27 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
-function OutreachCard({ msg }: { msg: { id: string; type: string; content: string; status: string; createdAt: Date } }) {
+function OutreachCard({ msg, contact }: { msg: { id: string; type: string; content: string; status: string; createdAt: Date }; contact: { platform: string; email: string; phone: string; linkedinUrl: string } }) {
   const [status, setStatus] = useState(msg.status);
+  const [content, setContent] = useState(msg.content);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [tweakInput, setTweakInput] = useState('');
+  const [tweaking, setTweaking] = useState(false);
+  const [showTweak, setShowTweak] = useState(false);
+  const [showSend, setShowSend] = useState(false);
+
+  const sendOptions = getSendOptions(contact, content);
+
+  const handleSend = async (url: string) => {
+    if (url === '__copy__') {
+      navigator.clipboard.writeText(content);
+    } else {
+      window.open(url, '_blank');
+    }
+    await updateStatus('sent');
+    setShowSend(false);
+  };
 
   const updateStatus = async (newStatus: string) => {
     await fetch(`/api/messages/${msg.id}`, {
@@ -232,6 +279,34 @@ function OutreachCard({ msg }: { msg: { id: string; type: string; content: strin
       body: JSON.stringify({ status: newStatus }),
     });
     setStatus(newStatus);
+  };
+
+  const saveContent = async () => {
+    setSaving(true);
+    await fetch(`/api/messages/${msg.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    });
+    setSaving(false);
+    setEditing(false);
+  };
+
+  const tweak = async () => {
+    if (!tweakInput.trim()) return;
+    setTweaking(true);
+    const res = await fetch(`/api/messages/${msg.id}/tweak`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instruction: tweakInput }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setContent(data.content);
+      setTweakInput('');
+      setShowTweak(false);
+    }
+    setTweaking(false);
   };
 
   return (
@@ -246,23 +321,105 @@ function OutreachCard({ msg }: { msg: { id: string; type: string; content: strin
           {status}
         </span>
       </div>
-      <p className="text-sm whitespace-pre-wrap mb-2">{msg.content}</p>
-      {status === 'draft' && (
-        <div className="flex gap-2">
+      {editing ? (
+        <div className="mb-2">
+          <textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            rows={4}
+            className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:border-gray-400 resize-y"
+          />
+          <div className="flex gap-2 mt-2">
+            <button onClick={saveContent} disabled={saving} className="px-3 py-1 bg-primary text-white rounded text-xs hover:bg-gray-800 disabled:opacity-40">
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+            <button onClick={() => { setContent(msg.content); setEditing(false); }} className="px-3 py-1 border border-border rounded text-xs hover:bg-gray-50">
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="text-sm whitespace-pre-wrap mb-2">{content}</p>
+      )}
+      {showTweak && (
+        <div className="flex gap-2 mb-2">
+          <input
+            value={tweakInput}
+            onChange={(e) => setTweakInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && tweak()}
+            placeholder="e.g. make it shorter, translate to Chinese..."
+            className="flex-1 px-3 py-1.5 border border-border rounded-lg text-xs focus:outline-none focus:border-gray-400"
+          />
+          <button onClick={tweak} disabled={tweaking || !tweakInput.trim()} className="px-3 py-1 bg-purple-600 text-white rounded text-xs hover:bg-purple-700 disabled:opacity-40">
+            {tweaking ? 'Tweaking...' : 'Go'}
+          </button>
+          <button onClick={() => { setShowTweak(false); setTweakInput(''); }} className="px-3 py-1 border border-border rounded text-xs hover:bg-gray-50">
+            Cancel
+          </button>
+        </div>
+      )}
+      {showSend && (
+        <div className="flex flex-wrap gap-2 mb-2 p-2 bg-gray-50 rounded-lg">
+          {sendOptions.length > 0 ? (
+            sendOptions.map((opt) => (
+              <button
+                key={opt.label}
+                onClick={() => handleSend(opt.url)}
+                className="px-3 py-1 bg-accent text-white rounded text-xs hover:bg-blue-700"
+              >
+                {opt.label}
+              </button>
+            ))
+          ) : (
+            <span className="text-xs text-muted">No contact info. Add email, phone, or LinkedIn URL above.</span>
+          )}
+          <button onClick={() => { updateStatus('sent'); setShowSend(false); }} className="px-3 py-1 border border-border rounded text-xs hover:bg-gray-50">
+            Just mark sent
+          </button>
+          <button onClick={() => setShowSend(false)} className="px-3 py-1 border border-border rounded text-xs hover:bg-gray-50">
+            Cancel
+          </button>
+        </div>
+      )}
+      <div className="flex gap-2">
+        {status === 'draft' && (
           <button
             onClick={() => updateStatus('approved')}
             className="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700"
           >
             Approve
           </button>
-          <button
-            onClick={() => navigator.clipboard.writeText(msg.content)}
-            className="px-3 py-1 border border-border rounded text-xs hover:bg-gray-50"
-          >
-            Copy
+        )}
+        {status === 'approved' && !showSend && (
+          <button onClick={() => setShowSend(true)} className="px-3 py-1 bg-accent text-white rounded text-xs hover:bg-blue-700">
+            Send...
           </button>
-        </div>
-      )}
+        )}
+        {status !== 'sent' && !editing && (
+          <>
+            <button
+              onClick={() => setEditing(true)}
+              className="px-3 py-1 border border-border rounded text-xs hover:bg-gray-50"
+            >
+              Edit
+            </button>
+            {!showTweak && (
+              <button
+                onClick={() => setShowTweak(true)}
+                className="px-3 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded text-xs hover:bg-purple-100"
+              >
+                Tweak with AI
+              </button>
+            )}
+          </>
+        )}
+        <button
+          onClick={() => navigator.clipboard.writeText(content)}
+          className="px-3 py-1 border border-border rounded text-xs hover:bg-gray-50"
+        >
+          Copy
+        </button>
+      </div>
     </div>
   );
 }
