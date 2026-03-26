@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Contact {
+  id          String   @id @default(cuid())
+  name        String
+  platform    String   // "wechat" | "linkedin"
+  platformId  String?  // username/id on the platform
+  headline    String?  // job title or LinkedIn headline
+  company     String?
+  location    String?
+  background  String?  // user-provided background notes
+  profileJson String?  // AI-generated profile analysis (JSON)
+  tags        String?  // comma-separated tags
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  chatHistory ChatMessage[]
+  outreach    OutreachMessage[]
+
+  @@unique([platform, platformId])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  contactId String
+  sender    String   // "me" | "them"
+  content   String
+  timestamp DateTime
+  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([contactId, timestamp])
+}
+
+model OutreachMessage {
+  id        String   @id @default(cuid())
+  contactId String
+  type      String   // "holiday" | "scheduling" | "cold_outreach" | "followup"
+  content   String
+  status    String   @default("draft") // "draft" | "approved" | "sent"
+  metadata  String?  // JSON: holiday name, scheduling details, etc.
+  createdAt DateTime @default(now())
+  sentAt    DateTime?
+  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([contactId])
+  @@index([status])
+}
+
+model UserProfile {
+  id             String   @id @default("default")
+  name           String
+  bio            String?
+  styleAnalysis  String?  // AI-generated writing style analysis (JSON)
+  preferences    String?  // JSON: tone, formality, language preferences
+  updatedAt      DateTime @updatedAt
+}
+
+model Campaign {
+  id          String   @id @default(cuid())
+  name        String
+  type        String   // "holiday" | "scheduling" | "cold_outreach"
+  config      String   // JSON: holiday name, template hints, etc.
+  status      String   @default("draft") // "draft" | "generating" | "review" | "sending" | "done"
+  contactIds  String   // JSON array of contact IDs
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
